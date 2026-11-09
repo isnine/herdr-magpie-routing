@@ -1,11 +1,11 @@
 // Live view of magpie's routing: the compact stage and magpies of magpie's
 // own Routing page (internal/gui/assets/plugins/routing), redrawn in GPUI.
-import { View, div, svg, image, PathBuilder } from "gpui-kit";
+import { View, div, svg, image, PathBuilder, uniform_list } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { theme, layout, settings, shared, setShared, openOverlay } from "herdr";
 
 const GATEWAY = "127.0.0.1:3425";
-const STAGE_H = 104, SIDE = 3, MAX_PLAYS = 4, KEEP = 60;
+const STAGE_H = 104, SIDE = 3, MAX_PLAYS = 4, KEEP = 60, ROW_H = 46;
 const NODE_H = 22, NODE_GAP = 6, HUB = 40, COL_GAP = 38, PAD = 10;
 const BIRD_SCALE = 0.55;
 const TAG_W = 132, TAG_H = 14;
@@ -25,6 +25,9 @@ const tried = (r, tr) => r.order.find((x) => seat(x) === seat(tr))
   || r.order.find((x) => x.id === tr.id);
 const tryOk = (tr) => tr.status < 400 && !tr.fail;
 const whole = (r) => { r.order ||= []; r.tries ||= []; r.left ||= []; return r; };
+const at = (s) => Date.parse(String(s).replace(/(\.\d{3})\d+/, "$1"));
+const fmtMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+const fmtK = (n) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 const alpha = (c, a) => {
   const s = String(c), base = s.slice(0, 7), had = s.length === 9 ? parseInt(s.slice(7), 16) / 255 : 1;
   return base + Math.round(Math.max(0, Math.min(1, a * had)) * 255).toString(16).padStart(2, "0");
@@ -73,7 +76,7 @@ const paint = (path, color) => window.paint_path(path, color).absolute().top(0).
 export default class Routing extends View {
   init(_props, cx) {
     this.routes = new Map(); this.seq = 0; this.loaded = false; this.offline = false;
-    this.pid = 0; this.serves = ""; this.totals = {};
+    this.pid = 0; this.serves = ""; this.totals = {}; this.skew = 0;
     this.given = new Map(); this.pAg = []; this.pDst = []; this.dst = new Map();
     this.plays = new Set(); this.trips = []; this.waits = []; this.dots = []; this.departing = [];
     this.lit = new Map(); this.gen = 0; this.ticking = false;
@@ -131,6 +134,7 @@ export default class Routing extends View {
 
   take(d, caught, cx) {
     this.offline = false;
+    this.skew = at(d.now) - Date.now();
     if (this.pid && d.pid !== this.pid) { this.routes.clear(); this.seq = 0; this.loaded = false; }
     this.pid = d.pid; this.serves = d.serves; this.totals = d.totals || this.totals;
     if (d.seq < this.seq) this.routes.clear();
@@ -510,16 +514,59 @@ export default class Routing extends View {
         .child(h_flex().absolute().top(0).left(0).size_full().items_center().justify_center().text_size(8.5).text_color(t.foreground).child(m.label)));
   }
 
+  row(r, t) {
+    const green = t.ansi2, red = t.ansi1, last = r.tries[r.tries.length - 1];
+    const ok = r.done ? (last ? tryOk(last) : r.status < 400 && !r.error) : null;
+    const w = last && tried(r, last);
+    const name = w ? w.name || w.provider : r.provider;
+    const who = w && w.kind !== "provider" && w.who ? (this.masked ? "••••" : w.who) : "";
+    const model = last?.model || w?.model || "";
+    const elapsed = r.done ? r.ms : Date.now() + this.skew - at(r.time);
+    const n = r.tries.length;
+    const speed = r.done && r.out && r.flow >= 100 ? `${Math.round(r.out / (r.flow / 1000))} tok/s` : "";
+    const stats = [`${n} ${n === 1 ? "try" : "tries"}`, r.tokens ? `${fmtK(r.tokens)} tokens` : "", elapsed != null ? fmtMs(elapsed) : "", speed].filter(Boolean).join(" · ");
+    return v_flex().id(`r-${r.id}`).w_full().h(ROW_H).px(8).justify_center().gap(2).rounded(8).text_size(12).hover((s) => s.bg(t.hover))
+      .child(h_flex().gap(6).items_center().min_w(0)
+        .child(svg("mods/workspace-chrome/terminal.svg").size(13).flex_none().text_color(this.hueOf(r.agent)))
+        .child(div().flex_none().font_semibold().text_color(t.foreground).child(r.agent))
+        .child(div().min_w(0).truncate().px(5).rounded(5).text_size(10.5).bg(t.raised).text_color(t.muted).child(r.model || ""))
+        .child(div().flex_1())
+        .child(div().flex_none().text_size(11).text_color(t.muted).child(String(r.time).slice(11, 19))))
+      .child(h_flex().gap(5).items_center().min_w(0).text_size(11.5).text_color(t.muted)
+        .child(div().flex_none().text_color(t.dim).child("→"))
+        .child(div().size(6).rounded(3).flex_none().bg(ok === null ? t.working : ok ? green : red))
+        .child(div().flex_none().text_color(ok === false ? red : t.foreground).child(name || ""))
+        .when(Boolean(who), (el) => el.child(div().flex_none().child(who)))
+        .child(div().flex_1().min_w(0).truncate().child(model))
+        .child(div().flex_none().text_size(11).child(stats)));
+  }
+
   render() {
     const t = theme(), vis = this.visible();
     if (vis && this.sightWait) { const go = this.sightWait; this.sightWait = null; go(); }
     if (vis && this.quotaSight) { const go = this.quotaSight; this.quotaSight = null; go(); }
     const quotas = shared("usage.quotas") ?? [], meters = METERS.map((id) => this.meter(id, quotas)).filter(Boolean);
-    const all = [...this.routes.values()];
-    const live = all.filter((r) => !r.done).length;
-    const body = v_flex().flex_1().min_h(0)
-      .when(this.offline, (el) => el.child(div().p(12).text_size(12).text_color(t.muted).child(`magpie isn't answering at ${GATEWAY}.`)))
-      .when(!this.offline && !all.length, (el) => el.child(div().p(12).text_size(12).text_color(t.muted).child(this.loaded ? "No requests yet." : "Connecting…")));
+    const all = [...this.routes.values()].sort((a, b) => b.id - a.id);
+    const flight = all.filter((r) => !r.done), recent = all.filter((r) => r.done);
+    const label = (s) => div().px(8).pt(6).pb(2).text_size(10.5).text_color(t.dim).child(s);
+    const body = this.offline
+      ? div().p(12).text_size(12).text_color(t.muted).child(`magpie isn't answering at ${GATEWAY}.`)
+      : !all.length
+        ? div().p(12).text_size(12).text_color(t.muted).child(this.loaded ? "No request yet. Every request an agent sends to magpie shows up here." : "Connecting…")
+        : v_flex().flex_1().min_h(0)
+          .child(h_flex().justify_end().items_center().px(8).pt(6).text_size(10.5).text_color(t.dim)
+            .child(div().id("mask").px(5).rounded(5).text_color(t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => {
+              this.masked = !this.masked;
+              localStorage.setItem("masked", this.masked ? "1" : "0");
+              cx.notify();
+            }).child(this.masked ? "Masked" : "Shown")))
+          .when(flight.length > 0, (el) => el.child(label(`IN FLIGHT ${flight.length}`)).children(flight.slice(0, 6).map((r) => this.row(r, t))))
+          .child(uniform_list("recent", recent.length, (i) => String(recent[i].id), (range) => {
+            const out = [];
+            for (let i = range.start; i < range.end; i++) out.push(this.row(recent[i], t));
+            return out;
+          }).flex_1().min_h(0));
+    const live = flight.length;
     return v_flex().id("root").size_full().min_h(0).p(8).gap(8).bg(t.background).rounded(10).border(1).border_color(t.border).text_color(t.foreground)
       .on_size_change((size, cx) => { this.w = size.width / (settings().zoom || 1) - 18; cx.notify(); })
       .child(h_flex().h(22).gap(7).px(4).items_center().flex_none().text_size(13)

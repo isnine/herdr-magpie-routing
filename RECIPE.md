@@ -11,6 +11,7 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 - Panel, in Herdr's 368px side column, top to bottom:
   - Header, 22px: route icon, "Magpie", pulsing dot and "N live" while requests are in flight.
   - Stage, 104px, radius 11: up to 3 agents on the left, a 40px hub with the magpie mark in the centre, up to 3 providers on the right. Nodes are 22px pills with 6px gaps. Wires are cubic curves, 1.5px, theme `border`.
+  - Request list: Masked/Shown toggle, IN FLIGHT rows (up to 6), followed by recent rows. Rows are 46px: agent, requested model tag, time; then provider, masked account, model, tries, tokens, duration, tok/s.
   - Footer: gateway address, pid, serves, calls, retried.
 
 ## How it behaves
@@ -20,8 +21,8 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 - Success: a new bird brings a green dot home, 420ms per wire.
 - Failure: the dot turns red, waits 260ms, returns to the hub in 360ms, and the next try flies on; with no try left it goes home red.
 - Wings beat every 420ms from the shoulder, far wing 30ms ahead.
-- At most 4 requests fly at once.
-- Account names on the stage respect the saved Masked/Shown choice; new installs default to masked.
+- At most 4 requests fly at once; others are only listed.
+- Masked (default) shows accounts as `••••`. The choice is kept per copy.
 - Clicking Routing toggles the panel. The side panel choice is remembered per space.
 
 ## Built from
@@ -48,5 +49,5 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 
 - `herdr-app check` passes for `routing`, `tabs-routing` and `usage`.
 - `herdr-app do layout.switch --name main-routing` shows a Routing button right of Changes.
-- With magpie running, an in-flight request makes a bird fly across the stage and return when answered.
+- With magpie running, a request appears under IN FLIGHT, a bird flies it across the stage, and the request moves to the recent list when answered.
 - Hiding and showing the panel leaves `herdr-app status` with no errors.
