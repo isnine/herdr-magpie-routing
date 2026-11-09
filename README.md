@@ -1,6 +1,6 @@
 # herdr-magpie-routing
 
-A Herdr layout with a live view of [magpie](https://github.com/yetone/magpie)'s routing, opened from a Routing button next to Files and Changes.
+A Herdr layout with a live view of [magpie](https://github.com/yetone/magpie)'s routing, opened from a Routing button next to Files and Changes, with Codex, Claude and Antigravity quota rings that open a Usage panel.
 
 ![Routing panel](preview.png)
 

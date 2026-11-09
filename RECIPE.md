@@ -7,6 +7,7 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 ## What you see
 
 - Tab bar: a Routing button right of Files and Changes, same size and selected look.
+- Routing panel, bottom right: Codex, Claude and Antigravity icons, each with a ring filled by its fullest 5-hour or 7-day window and labelled `5h` or `7d` (green below 60%, yellow below 90%, then red). Clicking opens the Usage panel.
 - Panel, in Herdr's 368px side column, top to bottom:
   - Header, 22px: route icon, "Magpie", pulsing dot and "N live" while requests are in flight.
   - Stage, 104px, radius 11: up to 3 agents on the left, a 40px hub with the magpie mark in the centre, up to 3 providers on the right. Nodes are 22px pills with 6px gaps. Wires are cubic curves, 1.5px, theme `border`.
@@ -27,6 +28,8 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 ## Built from
 
 - `layouts/main-routing.json`: a clone of `main`; `tabs` block uses `tabs-routing`; `panel-body` stack gains block `routing`.
+- `mods/routing` also polls `/v1/magpie/quotas?kept=1` every 30s while shown (a full read every 5 minutes) and publishes `shared("usage.quotas")`.
+- `mods/usage`: the popup listing every account's windows.
 - `mods/tabs-routing`: a clone of `tabs` with `panelButton("routing", ...)`, and `routing` added to the enabled panels.
 - `mods/routing`: `fetch` long polls `GET /v1/magpie/trace?after=<seq>&wait=1`. Wires and birds use `window.paint_path` with `PathBuilder`; dots are rounded divs. The loop is `cx.timer.after`.
 - Shipped mods used: `agents`, `changes`, `files`, `pane`, `spaces`, `workspace-chrome`, `workspace-status`.
@@ -44,7 +47,7 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 
 ## Done when
 
-- `herdr-app check` passes for `routing` and `tabs-routing`.
+- `herdr-app check` passes for `routing`, `tabs-routing` and `usage`.
 - `herdr-app do layout.switch --name main-routing` shows a Routing button right of Changes.
 - With magpie running, a request appears under IN FLIGHT, a bird flies it across the stage, and it moves to RECENT when answered.
 - Hiding and showing the panel leaves `herdr-app status` with no errors.

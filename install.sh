@@ -14,7 +14,7 @@ if [ ! -f "$source_dir/mods/routing/main.js" ]; then
 fi
 
 mkdir -p "$config/mods" "$config/layouts"
-for mod in routing tabs-routing; do
+for mod in routing tabs-routing usage; do
   mkdir -p "$config/mods/$mod"
   # Herdr docks a mod it first sees without mod.json as an extra panel.
   cp "$source_dir/mods/$mod/mod.json" "$config/mods/$mod/"

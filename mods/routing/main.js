@@ -1,13 +1,18 @@
 // Live view of magpie's routing: the compact stage and magpies of magpie's
 // own Routing page (internal/gui/assets/plugins/routing), redrawn in GPUI.
-import { View, div, svg, PathBuilder, uniform_list } from "gpui-kit";
+import { View, div, svg, image, PathBuilder, uniform_list } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { theme, layout, settings } from "herdr";
+import { theme, layout, settings, shared, setShared, openOverlay } from "herdr";
 
 const GATEWAY = "127.0.0.1:3425";
 const STAGE_H = 104, SIDE = 3, MAX_PLAYS = 4, KEEP = 60, ROW_H = 46;
 const NODE_H = 22, NODE_GAP = 6, HUB = 40, COL_GAP = 38, PAD = 10;
 const BIRD_SCALE = 0.55;
+const TAG_W = 132, TAG_H = 14;
+const QUOTA_MS = 30000, FULL_READ_EVERY = 10; // kept=1 asks no vendor; every 5 minutes one read does
+const RING = 22, RING_STROKE = 2.5;
+const METERS = ["codex", "claude", "antigravity"];
+const SPANS = [[/\b5 hours\b/, "5h"], [/\b7 days\b/, "7d"]];
 const FAST_MS = 33; // while a bird is in the air
 const SLOW_MS = 88; // only wires flowing: the 8px dash moves 1px per 87.5ms
 
@@ -78,6 +83,7 @@ export default class Routing extends View {
     this.w = 0; this.wires = new Map(); this.wiresFor = 0;
     this.masked = localStorage.getItem("masked") !== "0";
     this.poll(cx);
+    this.pollQuotas(cx);
   }
 
   visible() {
@@ -105,6 +111,23 @@ export default class Routing extends View {
           cx.notify();
           await new Promise((r) => cx.timer.after(5000, () => r()));
         }
+      }
+    });
+  }
+
+  pollQuotas(cx) {
+    cx.spawn(async (cx) => {
+      for (let i = 0; ; i++) {
+        if (!this.visible()) await new Promise((r) => { this.quotaSight = r; });
+        try {
+          const res = await fetch(`http://${GATEWAY}/v1/magpie/quotas${i % FULL_READ_EVERY ? "?kept=1" : ""}`);
+          if (!res.ok) throw new Error(String(res.status));
+          setShared("usage.quotas", (await res.json()).data);
+        } catch {
+          setShared("usage.quotas", null);
+        }
+        cx.notify();
+        await new Promise((r) => cx.timer.after(QUOTA_MS, () => r()));
       }
     });
   }
@@ -246,7 +269,7 @@ export default class Routing extends View {
       const g = this.gen, live = () => g === this.gen;
       this.plays.add(id);
       this.draw();
-      const dot = { color: this.hueOf(r.agent), state: "", bird: this.bird() };
+      const dot = { color: this.hueOf(r.agent), state: "", bird: this.bird(), model: r.model };
       this.dots.push(dot);
       this.kick(cx);
       const rt = () => this.routes.get(id) || { ...r, done: true, gone: true };
@@ -423,7 +446,7 @@ export default class Routing extends View {
     }
     if (any) lines.unshift(paint(base.build(), t.border));
 
-    const sky = [];
+    const sky = [], tags = [], placed = [];
     for (const d of this.dots) {
       if (d.x === undefined) continue;
       const c = d.state === "ok" ? green : d.state === "bad" ? red : d.color;
@@ -431,6 +454,15 @@ export default class Routing extends View {
       const fade = d.goneAt ? Math.max(0, 1 - (now - d.goneAt) / 300) : 1;
       sky.push(div().absolute().left(d.x - 6).top(d.y - 6).size(12).rounded(6).bg(alpha(c, 0.25 * pulse * fade)));
       sky.push(div().absolute().left(d.x - 3.5).top(d.y - 3.5).size(7).rounded(3.5).bg(alpha(c, pulse * fade)));
+      if (!d.model) continue;
+      const left = Math.max(2, Math.min(w - TAG_W - 2, d.x - TAG_W / 2));
+      const below = d.y + 9 + TAG_H <= STAGE_H - 2, step = below ? TAG_H + 1 : -(TAG_H + 1);
+      let top = below ? d.y + 9 : d.y - 9 - TAG_H;
+      // Requests waiting on one account sit at the same point.
+      while (placed.some((p) => Math.abs(p.left - left) < TAG_W && Math.abs(p.top - top) < TAG_H)) top += step;
+      placed.push({ left, top });
+      tags.push(h_flex().absolute().left(left).top(top).w(TAG_W).h(TAG_H).justify_center().child(
+        div().min_w(0).truncate().px(5).rounded(5).text_size(10).bg(alpha(t.raised, 0.92 * fade)).text_color(alpha(t.foreground, fade)).child(d.model)));
     }
     for (const b of [...this.dots.map((d) => d.bird).filter((b) => b && b.x !== undefined), ...this.departing]) sky.push(...this.birdEls(b, now, t, card));
 
@@ -452,7 +484,34 @@ export default class Routing extends View {
     const hub = h_flex().absolute().left(hubX).top(hubY).size(HUB).rounded(HUB).items_center().justify_center()
       .bg(t.raised).border(1).border_color(t.border).text_color(t.foreground).child(svg("mods/routing/bird.svg").size(24));
     return div().id("stage").relative().h(STAGE_H).flex_none().w_full().rounded(11).bg(card).border(1).border_color(t.border).overflow_hidden()
-      .children(lines).children(sky).when(this.plays.size > 0, (el) => el.child(ring)).children(from).child(hub).children(to);
+      .children(lines).children(sky).when(this.plays.size > 0, (el) => el.child(ring)).children(from).child(hub).children(to).children(tags);
+  }
+
+  // The fullest 5-hour or 7-day window of one agent's accounts.
+  meter(id, list) {
+    let best = null;
+    for (const q of list) if (q.provider === id) for (const w of q.windows ?? []) {
+      const span = !w.unlimited && !w.text && w.balance == null && SPANS.find(([re]) => re.test(w.name));
+      if (span && (!best || w.used > best.used)) best = { id, used: Math.max(0, Math.min(100, w.used)), label: span[1] };
+    }
+    return best;
+  }
+  ring(m, t) {
+    const arc = (used) => {
+      const p = PathBuilder.stroke(RING_STROKE), c = RING / 2, r = c - RING_STROKE / 2, n = Math.max(1, Math.ceil(used / 2.5));
+      for (let i = 0; i <= n; i++) {
+        const a = -Math.PI / 2 + (2 * Math.PI * used * i) / (100 * n), x = c + r * Math.cos(a), y = c + r * Math.sin(a);
+        if (i) p.line_to(x, y); else p.move_to(x, y);
+      }
+      return p.build();
+    };
+    const color = m.used >= 90 ? t.ansi1 : m.used >= 60 ? t.ansi3 : t.ansi2;
+    return h_flex().gap(3).items_center().flex_none()
+      .child(image(`icons/${m.id}.svg`).size(14).flex_none())
+      .child(div().relative().size(RING).flex_none()
+        .child(paint(arc(100), t.border))
+        .when(m.used > 0, (el) => el.child(paint(arc(m.used), color)))
+        .child(h_flex().absolute().top(0).left(0).size_full().items_center().justify_center().text_size(8.5).text_color(t.foreground).child(m.label)));
   }
 
   row(r, t) {
@@ -466,7 +525,7 @@ export default class Routing extends View {
     const n = r.tries.length;
     const speed = r.done && r.out && r.flow >= 100 ? `${Math.round(r.out / (r.flow / 1000))} tok/s` : "";
     const stats = [`${n} ${n === 1 ? "try" : "tries"}`, r.tokens ? `${fmtK(r.tokens)} tokens` : "", elapsed != null ? fmtMs(elapsed) : "", speed].filter(Boolean).join(" · ");
-    return v_flex().id(`r-${r.id}`).h(ROW_H).px(8).justify_center().gap(2).rounded(8).text_size(12).hover((s) => s.bg(t.hover))
+    return v_flex().id(`r-${r.id}`).w_full().h(ROW_H).px(8).justify_center().gap(2).rounded(8).text_size(12).hover((s) => s.bg(t.hover))
       .child(h_flex().gap(6).items_center().min_w(0)
         .child(svg("mods/workspace-chrome/terminal.svg").size(13).flex_none().text_color(this.hueOf(r.agent)))
         .child(div().flex_none().font_semibold().text_color(t.foreground).child(r.agent))
@@ -485,6 +544,8 @@ export default class Routing extends View {
   render() {
     const t = theme(), vis = this.visible();
     if (vis && this.sightWait) { const go = this.sightWait; this.sightWait = null; go(); }
+    if (vis && this.quotaSight) { const go = this.quotaSight; this.quotaSight = null; go(); }
+    const quotas = shared("usage.quotas") ?? [], meters = METERS.map((id) => this.meter(id, quotas)).filter(Boolean);
     const all = [...this.routes.values()].sort((a, b) => b.id - a.id);
     const flight = all.filter((r) => !r.done), recent = all.filter((r) => r.done);
     const label = (s) => div().px(8).pt(6).pb(2).text_size(10.5).text_color(t.dim).child(s);
@@ -515,7 +576,11 @@ export default class Routing extends View {
         .when(live > 0, (el) => el.child(div().id("live").size(6).rounded(3).bg(t.working).loop("opacity", { from: 0.35, to: 1, period: 1800 })).child(div().text_size(12).text_color(t.working).child(`${live} live`))))
       .when(this.w > 0 && all.length > 0 && !this.offline, (el) => el.child(this.stage(t)))
       .child(body)
-      .when(Boolean(this.pid), (el) => el.child(div().flex_none().px(4).text_size(10.5).text_color(t.dim).truncate()
-        .child(`${GATEWAY} · pid ${this.pid} · ${this.serves} · ${this.totals.requests ?? 0} calls · ${this.totals.rerouted ?? 0} retried`)));
+      .when(Boolean(this.pid) || meters.length > 0, (el) => el.child(h_flex().flex_none().min_h(24).px(4).gap(10).items_center()
+        .child(div().flex_1().min_w(0).text_size(10.5).text_color(t.dim).truncate()
+          .child(this.pid ? `${GATEWAY} · pid ${this.pid} · ${this.serves} · ${this.totals.requests ?? 0} calls · ${this.totals.rerouted ?? 0} retried` : ""))
+        .when(meters.length > 0, (el) => el.child(h_flex().id("usage-rings").flex_none().h(26).px(4).gap(8).items_center().rounded(6).hover((s) => s.bg(t.hover))
+          .on_click(() => openOverlay({ mod: "usage", kind: "popup", width: 360, height: 560 }))
+          .children(meters.map((m) => this.ring(m, t)))))));
   }
 }
