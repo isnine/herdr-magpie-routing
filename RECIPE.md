@@ -11,7 +11,7 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 - Panel, in Herdr's 368px side column, top to bottom:
   - Header, 22px: route icon, "Magpie", pulsing dot and "N live" while requests are in flight.
   - Stage, 104px, radius 11: up to 3 agents on the left, a 40px hub with the magpie mark in the centre, up to 3 providers on the right. Nodes are 22px pills with 6px gaps. Wires are cubic curves, 1.5px, theme `border`.
-  - Request list: Masked/Shown toggle, IN FLIGHT rows (up to 6), followed by recent rows. Rows are 46px: agent, requested model tag, time; then provider, masked account, model, tries, tokens, duration, tok/s.
+  - Request list: IN FLIGHT rows (up to 6), followed by recent rows. Rows are 46px: agent, requested model tag, time; then provider, account, model, tries, tokens, duration, tok/s.
   - Footer: gateway address, pid, serves, calls, retried.
 
 ## How it behaves
@@ -22,7 +22,7 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
 - Failure: the dot turns red, waits 260ms, returns to the hub in 360ms, and the next try flies on; with no try left it goes home red.
 - Wings beat every 420ms from the shoulder, far wing 30ms ahead.
 - At most 4 requests fly at once; others are only listed.
-- Masked (default) shows accounts as `••••`. The choice is kept per copy.
+- Account names respect the previously saved Masked/Shown choice; new installs default to masked.
 - Clicking Routing toggles the panel. The side panel choice is remembered per space.
 
 ## Built from

@@ -554,12 +554,6 @@ export default class Routing extends View {
       : !all.length
         ? div().p(12).text_size(12).text_color(t.muted).child(this.loaded ? "No request yet. Every request an agent sends to magpie shows up here." : "Connecting…")
         : v_flex().flex_1().min_h(0)
-          .child(h_flex().justify_end().items_center().px(8).pt(6).text_size(10.5).text_color(t.dim)
-            .child(div().id("mask").px(5).rounded(5).text_color(t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => {
-              this.masked = !this.masked;
-              localStorage.setItem("masked", this.masked ? "1" : "0");
-              cx.notify();
-            }).child(this.masked ? "Masked" : "Shown")))
           .when(flight.length > 0, (el) => el.child(label(`IN FLIGHT ${flight.length}`)).children(flight.slice(0, 6).map((r) => this.row(r, t))))
           .child(uniform_list("recent", recent.length, (i) => String(recent[i].id), (range) => {
             const out = [];
