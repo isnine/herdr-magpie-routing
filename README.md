@@ -9,16 +9,12 @@ A Herdr layout with a live view of [magpie](https://github.com/yetone/magpie)'s 
 Needs Herdr (built against 0.1.13) and magpie running on the same machine, with its gateway at `127.0.0.1:3425`.
 
 ```sh
-gh repo clone isnine/herdr-magpie-routing
-cd herdr-magpie-routing
-mkdir -p ~/.config/herdr-app/mods
-cp -R mods/routing mods/tabs-routing ~/.config/herdr-app/mods/
-cp layouts/main-routing.json ~/.config/herdr-app/layouts/
-herdr-app check ~/.config/herdr-app/mods/routing
-herdr-app do layout.switch --name main-routing
+curl -fsSL https://raw.githubusercontent.com/isnine/herdr-magpie-routing/main/install.sh | bash
 ```
 
-Copy `mod.json` along with `main.js` (as above): a mod first seen without it gets docked as an extra panel.
+From a clone, run `./install.sh` instead.
+
+The script copies the mods and layout into `~/.config/herdr-app/`, overwriting earlier copies of them, then switches to the layout.
 
 `ctrl-shift-l` switches back to your previous layout. See [RECIPE.md](RECIPE.md) for how it is built.
 
