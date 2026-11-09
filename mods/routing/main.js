@@ -1,7 +1,7 @@
 // Live view of magpie's routing: the compact stage and magpies of magpie's
 // own Routing page (internal/gui/assets/plugins/routing), redrawn in GPUI.
 import { View, div, svg, image, PathBuilder, uniform_list } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { theme, layout, settings, shared, setShared, openOverlay } from "herdr";
 
 const GATEWAY = "127.0.0.1:3425";
@@ -82,6 +82,9 @@ export default class Routing extends View {
     this.lit = new Map(); this.gen = 0; this.ticking = false;
     this.w = 0; this.wires = new Map(); this.wiresFor = 0;
     this.masked = localStorage.getItem("masked") !== "0";
+    this.filter = "";
+    this.filterInput = InputState.new({ placeholder: "Filter requests…" });
+    this.filterInput.on("change", (_e, cx) => { this.filter = this.filterInput.value(); cx.notify(); });
     this.poll(cx);
     this.pollQuotas(cx);
   }
@@ -547,20 +550,29 @@ export default class Routing extends View {
     if (vis && this.quotaSight) { const go = this.quotaSight; this.quotaSight = null; go(); }
     const quotas = shared("usage.quotas") ?? [], meters = METERS.map((id) => this.meter(id, quotas)).filter(Boolean);
     const all = [...this.routes.values()].sort((a, b) => b.id - a.id);
-    const flight = all.filter((r) => !r.done), recent = all.filter((r) => r.done);
+    const filter = this.filter.trim().toLowerCase();
+    const matches = (r) => {
+      if (!filter) return true;
+      const last = r.tries[r.tries.length - 1], w = last && tried(r, last);
+      return [r.agent, r.model, w ? w.name || w.provider : r.provider, last?.model || w?.model,
+        !this.masked && w?.kind !== "provider" ? w?.who : ""]
+        .some((value) => String(value ?? "").toLowerCase().includes(filter));
+    };
+    const flight = all.filter((r) => !r.done && matches(r)), recent = all.filter((r) => r.done && matches(r));
     const label = (s) => div().px(8).pt(6).pb(2).text_size(10.5).text_color(t.dim).child(s);
     const body = this.offline
-      ? div().p(12).text_size(12).text_color(t.muted).child(`magpie isn't answering at ${GATEWAY}.`)
+      ? div().flex_1().min_h(0).p(12).text_size(12).text_color(t.muted).child(`magpie isn't answering at ${GATEWAY}.`)
       : !all.length
-        ? div().p(12).text_size(12).text_color(t.muted).child(this.loaded ? "No request yet. Every request an agent sends to magpie shows up here." : "Connecting…")
+        ? div().flex_1().min_h(0).p(12).text_size(12).text_color(t.muted).child(this.loaded ? "No request yet. Every request an agent sends to magpie shows up here." : "Connecting…")
         : v_flex().flex_1().min_h(0)
           .when(flight.length > 0, (el) => el.child(label(`IN FLIGHT ${flight.length}`)).children(flight.slice(0, 6).map((r) => this.row(r, t))))
+          .when(Boolean(filter) && !flight.length && !recent.length, (el) => el.child(div().px(8).pt(6).text_size(12).text_color(t.muted).child("No matching requests.")))
           .child(uniform_list("recent", recent.length, (i) => String(recent[i].id), (range) => {
             const out = [];
             for (let i = range.start; i < range.end; i++) out.push(this.row(recent[i], t));
             return out;
           }).flex_1().min_h(0));
-    const live = flight.length;
+    const live = all.filter((r) => !r.done).length;
     return v_flex().id("root").size_full().min_h(0).p(8).gap(8).bg(t.background).rounded(10).border(1).border_color(t.border).text_color(t.foreground)
       .on_size_change((size, cx) => { this.w = size.width / (settings().zoom || 1) - 18; cx.notify(); })
       .child(h_flex().h(22).gap(7).px(4).items_center().flex_none().text_size(13)
@@ -569,6 +581,9 @@ export default class Routing extends View {
         .when(live > 0, (el) => el.child(div().id("live").size(6).rounded(3).bg(t.working).loop("opacity", { from: 0.35, to: 1, period: 1800 })).child(div().text_size(12).text_color(t.working).child(`${live} live`))))
       .when(this.w > 0 && all.length > 0 && !this.offline, (el) => el.child(this.stage(t)))
       .child(body)
+      .child(h_flex().id("request-filter").flex_none().h(30).px(8).gap(6).items_center().rounded(7).border(1).border_color(t.border).bg(t.raised)
+        .child(svg("mods/workspace-chrome/search.svg").size(14).flex_none().text_color(t.dim))
+        .child(Input.new(this.filterInput).flex_1().min_w(0).h_full().text_size(11.5).text_color(t.foreground)))
       .when(Boolean(this.pid) || meters.length > 0, (el) => el.child(h_flex().flex_none().min_h(24).px(4).gap(10).items_center()
         .child(div().flex_1().min_w(0).text_size(10.5).text_color(t.dim).truncate()
           .child(this.pid ? `${GATEWAY} · pid ${this.pid} · ${this.serves} · ${this.totals.requests ?? 0} calls · ${this.totals.rerouted ?? 0} retried` : ""))

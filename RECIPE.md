@@ -12,6 +12,7 @@ Herdr's main layout with one more side panel: a live picture of what magpie's ga
   - Header, 22px: route icon, "Magpie", pulsing dot and "N live" while requests are in flight.
   - Stage, 104px, radius 11: up to 3 agents on the left, a 40px hub with the magpie mark in the centre, up to 3 providers on the right. Nodes are 22px pills with 6px gaps. Wires are cubic curves, 1.5px, theme `border`.
   - Request list: IN FLIGHT rows (up to 6), followed by recent rows. Rows are 46px: agent, requested model tag, time; then provider, account, model, tries, tokens, duration, tok/s.
+  - Filter field above the footer: filter request rows by agent, provider, model or visible account name.
   - Footer: gateway address, pid, serves, calls, retried.
 
 ## How it behaves
