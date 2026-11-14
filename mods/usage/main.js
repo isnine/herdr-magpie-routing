@@ -7,6 +7,7 @@ import { theme, shared, setShared } from "herdr";
 const GATEWAY = "127.0.0.1:3425";
 const HOUR = 3600e3;
 const LIST_H = 400; // a popup takes its height from its content, so the list needs its own
+const OMIT = new Set(["workbuddy-ai"]);
 const ICONS = { codex: "codex", claude: "claude", copilot: "copilot", antigravity: "antigravity", grok: "grok", "opencode-zen-free": "opencode" };
 
 const at = (s) => Date.parse(String(s).replace(/(\.\d{3})\d+/, "$1"));
@@ -66,9 +67,9 @@ export default class Usage extends View {
     const used = Math.max(0, Math.min(100, w.used)), c = tone(t, used), e = elapsed(w, now);
     return row
       .child(div().relative().w(96).h(4).flex_none().rounded(2).bg(t.raised)
-        .child(div().h_full().rounded(2).bg(c).w(Math.max(3, 0.96 * used)))
-        .when(e !== null, (el) => el.child(div().absolute().top(-2).left(96 * e).w(1).h(8).bg(t.foreground))))
-      .child(h_flex().w(38).flex_none().pr(16).justify_end().text_color(used >= 60 ? c : t.foreground).child(`${Math.round(used)}%`));
+        .child(div().h_full().rounded(2).bg(c).w(Math.max(3, 0.96 * (100 - used))))
+        .when(e !== null, (el) => el.child(div().absolute().top(-2).left(96 * (1 - e)).w(1).h(8).bg(t.foreground))))
+      .child(h_flex().w(38).flex_none().pr(16).justify_end().text_color(used >= 60 ? c : t.foreground).child(`${Math.round(100 - used)}%`));
   }
 
   // Pace against the even rate, and whether what's left lasts until the reset.
@@ -133,7 +134,7 @@ export default class Usage extends View {
 
   render() {
     const t = theme(), list = shared("usage.quotas"), now = Date.now();
-    const shown = (list ?? []).filter((q) => q.windows?.length || q.balance || q.error);
+    const shown = (list ?? []).filter((q) => !OMIT.has(q.provider) && (q.windows?.length || q.balance || q.error));
     const read = Math.max(...shown.filter((q) => q.readAt).map((q) => at(q.readAt)));
     const updated = !list ? "magpie isn't answering" : Number.isFinite(read) ? `Updated ${now - read < 60000 ? "just now" : `${span(now - read)} ago`}` : "";
     const rows = this.tab === "usage"
