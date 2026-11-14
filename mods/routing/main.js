@@ -513,7 +513,7 @@ export default class Routing extends View {
       .child(image(`icons/${m.id}.svg`).size(14).flex_none())
       .child(div().relative().size(RING).flex_none()
         .child(paint(arc(100), t.border))
-        .when(m.used > 0, (el) => el.child(paint(arc(m.used), color)))
+        .when(m.used < 100, (el) => el.child(paint(arc(100 - m.used), color)))
         .child(h_flex().absolute().top(0).left(0).size_full().items_center().justify_center().text_size(8.5).text_color(t.foreground).child(m.label)));
   }
 
